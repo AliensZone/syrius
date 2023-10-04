@@ -6,7 +6,7 @@ class SendPaymentButton extends LoadingButton {
   const SendPaymentButton({
     required VoidCallback? onPressed,
     required Key key,
-    String text = 'Send payment',
+    String text = 'Send',
     Color? outlineColor,
     Size minimumSize = const Size(150.0, 40.0),
   }) : super(
