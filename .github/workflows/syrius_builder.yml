@@ -13,7 +13,7 @@ env:
 
 jobs:
   build-macos:
-    runs-on: macos-12
+    runs-on: macos-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -40,21 +40,78 @@ jobs:
         run: |
           flutter config --enable-macos-desktop
           flutter build macos --release
-      - name: Package into DMG
+      - uses: apple-actions/import-codesign-certs@v3
+        with:
+          p12-file-base64: ${{ secrets.MAC_CODE_SIGN_CERT }}
+          p12-password: ${{ secrets.MAC_CODE_SIGN_CERT_PASS }}
+      - name: Apple notarization
+        env:
+          MAC_CODE_API_KEY: ${{ secrets.MAC_CODE_API_KEY }}
+          MAC_CODE_API_KEY_ID: ${{ secrets.MAC_CODE_API_KEY_ID }}
+          MAC_CODE_API_ISSUER_ID: ${{ secrets.MAC_CODE_API_ISSUER_ID }}
+          MAC_CODE_API_DEVELOPER_ID: ${{ secrets.MAC_CODE_API_DEVELOPER_ID }}
         run: |
-          create-dmg --volname syrius \
-          --volicon macos/dmg/volume.icns \
-          --icon "s\ y\ r\ i\ u\ s.app" 210 175 \
-          --icon-size 90 \
-          --app-drop-link 390 175 \
-          --text-size 14 \
-          --background macos/dmg/background.png \
-          --window-pos 300 200 \
-          --window-size 600 325 \
-          --hide-extension "s\ y\ r\ i\ u\ s.app" \
-          --format ULFO \
-          --hdiutil-verbose syrius-alphanet-macos-universal.dmg build/macos/Build/Products/Release/s\ y\ r\ i\ u\ s.app \
-          syrius-alphanet-macos-universal.dmg build/macos/Build/Products/Release/s\ y\ r\ i\ u\ s.app
+            echo "Sign the dynamic libraries"
+            pwd
+            cd build/macos/Build/Products/Release/s\ y\ r\ i\ u\ s.app
+            codesign -v -f --timestamp --options runtime --sign "$MAC_CODE_API_DEVELOPER_ID" $(find . -name "*.dylib")
+            
+            echo "Sign the GUI"
+            pwd
+            cd ..
+            pwd
+            codesign -v -f --timestamp --options runtime --sign "$MAC_CODE_API_DEVELOPER_ID" --entitlements ../../../../../macos/Runner/Release.entitlements --deep "s\ y\ r\ i\ u\ s.app"
+            
+            echo "Notarize"
+            echo "$MAC_CODE_API_KEY" > /tmp/api_key.p8
+            
+            echo "Compress the .app to .zip and notarize"
+            ditto -c -k --sequesterRsrc --keepParent "s\ y\ r\ i\ u\ s.app" "syrius.zip"
+            
+            STATUS=$(xcrun notarytool submit syrius.zip -f json --key /tmp/api_key.p8 --key-id "$MAC_CODE_API_KEY_ID" --issuer "$MAC_CODE_API_ISSUER_ID" --wait | jq -r ".id")            
+            echo ${STATUS}
+            xcrun notarytool log "$STATUS" --key /tmp/api_key.p8 --key-id "$MAC_CODE_API_KEY_ID" --issuer "$MAC_CODE_API_ISSUER_ID"
+
+            if [[ "$STATUS" == *"Accepted"* ]]; then
+              echo "Staple the .app"
+              xcrun stapler staple -v "s\ y\ r\ i\ u\ s.app"
+            else
+              echo "Error uploading for notarization"
+              exit
+            fi
+            
+            pwd
+            cd ../../../../../
+            pwd
+            
+            create-dmg \
+              --volname "syrius" \
+              --volicon ./macos/dmg/volume.icns \
+              --icon "s\ y\ r\ i\ u\ s.app" 210 175 \
+              --icon-size 90 \
+              --app-drop-link 390 175 \
+              --text-size 14 \
+              --background macos/dmg/background.png \
+              --window-pos 300 200 \
+              --window-size 600 325 \
+              --hide-extension "s\ y\ r\ i\ u\ s.app" \
+              --format ULFO \
+              --hdiutil-verbose \
+              syrius-alphanet-macos-universal.dmg ./build/macos/Build/Products/Release/s\ y\ r\ i\ u\ s.app/
+            
+            echo "Sign the .dmg"
+            codesign -v -f --timestamp --options runtime --sign "$MAC_CODE_API_DEVELOPER_ID" syrius-alphanet-macos-universal.dmg
+            
+            echo "Notarize the .dmg"
+            STATUS=$(xcrun notarytool submit "syrius-alphanet-macos-universal.dmg" -f json --key /tmp/api_key.p8 --key-id "$MAC_CODE_API_KEY_ID" --issuer "$MAC_CODE_API_ISSUER_ID" --wait)
+            echo ${STATUS}
+            xcrun notarytool log "$STATUS" --key /tmp/api_key.p8 --key-id "$MAC_CODE_API_KEY_ID" --issuer "$MAC_CODE_API_ISSUER_ID"
+
+            echo "Staple the .dmg"
+            xcrun stapler staple -v syrius-alphanet-macos-universal.dmg 
+            
+            echo "Cleanup"
+            rm /tmp/api_key.p8
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
