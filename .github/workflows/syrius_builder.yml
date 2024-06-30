@@ -52,37 +52,30 @@ jobs:
           MAC_CODE_API_DEVELOPER_ID: ${{ secrets.MAC_CODE_API_DEVELOPER_ID }}
         run: |
             echo "Sign the dynamic libraries"
-            pwd
             cd build/macos/Build/Products/Release/s\ y\ r\ i\ u\ s.app
             codesign -v -f --timestamp --options runtime --sign "$MAC_CODE_API_DEVELOPER_ID" $(find . -name "*.dylib")
             
-            echo "Sign the GUI"
-            pwd
+            echo "Sign the app"
             cd ..
-            pwd
-            codesign -v -f --timestamp --options runtime --sign "$MAC_CODE_API_DEVELOPER_ID" --entitlements ../../../../../macos/Runner/Release.entitlements --deep "s\ y\ r\ i\ u\ s.app"
+            codesign -v -f --timestamp --options runtime --sign "$MAC_CODE_API_DEVELOPER_ID" --entitlements ../../../../../macos/Runner/Release.entitlements --deep "s y r i u s.app"
             
-            echo "Notarize"
+            
+            echo "Compress the app to zip and notarize"
+            ditto -c -k --sequesterRsrc --keepParent "s y r i u s.app" "syrius.zip"
+            
             echo "$MAC_CODE_API_KEY" > /tmp/api_key.p8
-            
-            echo "Compress the .app to .zip and notarize"
-            ditto -c -k --sequesterRsrc --keepParent "s\ y\ r\ i\ u\ s.app" "syrius.zip"
-            
-            STATUS=$(xcrun notarytool submit syrius.zip -f json --key /tmp/api_key.p8 --key-id "$MAC_CODE_API_KEY_ID" --issuer "$MAC_CODE_API_ISSUER_ID" --wait | jq -r ".id")            
+            STATUS=$(xcrun notarytool submit syrius.zip -f json --key /tmp/api_key.p8 --key-id "$MAC_CODE_API_KEY_ID" --issuer "$MAC_CODE_API_ISSUER_ID" --wait)            
             echo ${STATUS}
-            xcrun notarytool log "$STATUS" --key /tmp/api_key.p8 --key-id "$MAC_CODE_API_KEY_ID" --issuer "$MAC_CODE_API_ISSUER_ID"
-
+            
             if [[ "$STATUS" == *"Accepted"* ]]; then
               echo "Staple the .app"
-              xcrun stapler staple -v "s\ y\ r\ i\ u\ s.app"
+              xcrun stapler staple -v "s y r i u s.app"
             else
               echo "Error uploading for notarization"
               exit
             fi
             
-            pwd
             cd ../../../../../
-            pwd
             
             create-dmg \
               --volname "syrius" \
@@ -99,15 +92,14 @@ jobs:
               --hdiutil-verbose \
               syrius-alphanet-macos-universal.dmg ./build/macos/Build/Products/Release/s\ y\ r\ i\ u\ s.app/
             
-            echo "Sign the .dmg"
+            echo "Sign the dmg"
             codesign -v -f --timestamp --options runtime --sign "$MAC_CODE_API_DEVELOPER_ID" syrius-alphanet-macos-universal.dmg
             
-            echo "Notarize the .dmg"
-            STATUS=$(xcrun notarytool submit "syrius-alphanet-macos-universal.dmg" -f json --key /tmp/api_key.p8 --key-id "$MAC_CODE_API_KEY_ID" --issuer "$MAC_CODE_API_ISSUER_ID" --wait)
+            echo "Notarize the dmg"
+            STATUS=$(xcrun notarytool submit syrius-alphanet-macos-universal.dmg -f json --key /tmp/api_key.p8 --key-id "$MAC_CODE_API_KEY_ID" --issuer "$MAC_CODE_API_ISSUER_ID" --wait)
             echo ${STATUS}
-            xcrun notarytool log "$STATUS" --key /tmp/api_key.p8 --key-id "$MAC_CODE_API_KEY_ID" --issuer "$MAC_CODE_API_ISSUER_ID"
 
-            echo "Staple the .dmg"
+            echo "Staple the dmg"
             xcrun stapler staple -v syrius-alphanet-macos-universal.dmg 
             
             echo "Cleanup"
@@ -195,7 +187,6 @@ jobs:
   make-release:
     needs: [build-macos, build-windows, build-linux]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - name: Checkout
         uses: actions/checkout@v4
