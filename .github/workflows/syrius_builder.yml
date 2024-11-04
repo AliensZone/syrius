@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  FLUTTER_VERSION: "3.19.x"
+  FLUTTER_VERSION: "3.24.3"
 
 jobs:
   build-macos:
@@ -58,7 +58,6 @@ jobs:
             echo "Sign the app"
             cd ..
             codesign -v -f --timestamp --options runtime --sign "$MAC_CODE_API_DEVELOPER_ID" --entitlements ../../../../../macos/Runner/Release.entitlements --deep "s y r i u s.app"
-            
             
             echo "Compress the app to zip and notarize"
             ditto -c -k --sequesterRsrc --keepParent "s y r i u s.app" "syrius.zip"
@@ -143,7 +142,7 @@ jobs:
           name: windows-artifacts
           path: syrius-alphanet-windows-amd64.zip
   build-linux:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
